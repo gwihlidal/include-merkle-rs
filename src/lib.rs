@@ -14,11 +14,11 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
-use ptree::graph::print_graph;
-use petgraph::prelude::*;
 use petgraph::algo::is_cyclic_directed;
-use petgraph::visit::Walker;
 use petgraph::dot::Dot;
+use petgraph::prelude::*;
+use petgraph::visit::Walker;
+use ptree::graph::print_graph;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Include {
@@ -139,18 +139,19 @@ pub fn traverse_build(
 
     // Create all edges, and add them to the graph.
     outgoing_nodes.iter().for_each(|outgoing_node| {
-        graph.add_edge(graph_node, *outgoing_node, level);
+        let edge = graph.add_edge(graph_node, *outgoing_node, level);
         // TODO: Cycles are currently unsupported!
         assert!(!is_cyclic_directed(&*graph));
+        // This might work (untested):
+        if is_cyclic_directed(&*graph) {
+            graph.remove_edge(edge);
+        }
     });
 
     graph_node
 }
 
-pub fn traverse_patch(
-    graph: &mut IncludeNodeGraph,
-    root_node: NodeIndex,
-) {
+pub fn traverse_patch(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
     // Visit nodes in a depth-first search, emitting nodes in post-order.
     // We want to evaluate data starting at the leaf nodes (no include directives).
     let dfs_nodes = DfsPostOrder::new(&*graph, root_node)
@@ -191,14 +192,12 @@ pub fn traverse_patch(
                 }
             }
             node.patched_identity = Some(compute_identity(&include_text.as_bytes()));
+            node.flattened = include_text;
         }
     });
 }
 
-pub fn traverse_flatten(
-    graph: &mut IncludeNodeGraph,
-    root_node: NodeIndex,
-) {
+pub fn traverse_flatten(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
     // Visit nodes in a depth-first search, emitting nodes in post-order.
     // We want to evaluate data starting at the leaf nodes (no include directives).
     let dfs_nodes = DfsPostOrder::new(&*graph, root_node)
@@ -226,7 +225,10 @@ pub fn traverse_flatten(
                     .iter()
                     .find(|&include| &include.include_path == include_file)
                 {
-                    let patch = format!("// EMBED-START - {:?}\n{}\n// EMBED-FINISH - {:?}", &include_file, &flattened, &include_file);
+                    let patch = format!(
+                        "// EMBED-START - {:?}\n{}\n// EMBED-FINISH - {:?}",
+                        &include_file, &flattened, &include_file
+                    );
                     include_text.replace_range(include.range_start..include.range_end, &patch);
                 }
             }
@@ -253,8 +255,7 @@ pub fn read_file<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
     let mut file = File::open(path)?;
     let meta = file.metadata()?;
     let size = meta.len() as usize;
-    let mut data = Vec::with_capacity(size);
-    data.resize(size, 0);
+    let mut data = vec![0; size];
     file.read_exact(&mut data)?;
     Ok(data)
 }
@@ -283,7 +284,7 @@ pub fn parse_includes(input: &str) -> Vec<Include> {
         let range_text = &input[range_start..range_end];
         let range_caps = ABSOLUTE_PATH_REGEX.captures(range_text).unwrap();
         let include_path = range_caps.get(1).map_or("", |m| m.as_str());
-        if include_path.len() > 0 {
+        if !include_path.is_empty() {
             references.push(Include {
                 include_path: Path::new(include_path).to_path_buf(),
                 range_start,
@@ -301,7 +302,7 @@ pub fn parse_includes(input: &str) -> Vec<Include> {
         let range_text = range_text.trim().trim_matches('\n');
         let range_caps = RELATIVE_PATH_REGEX.captures(range_text).unwrap();
         let include_path = range_caps.get(1).map_or("", |m| m.as_str());
-        if include_path.len() > 0 {
+        if !include_path.is_empty() {
             references.push(Include {
                 include_path: Path::new(include_path).to_path_buf(),
                 range_start,
@@ -347,4 +348,12 @@ pub fn graph_to_stdout(graph: &IncludeNodeGraph, root_node: NodeIndex) -> std::i
 
 pub fn graph_to_dot(graph: &IncludeNodeGraph) -> String {
     Dot::new(&graph).to_string()
+}
+
+pub fn graph_to_node_vec(graph: &IncludeNodeGraph) -> Vec<IncludeNode> {
+    graph
+        .raw_nodes()
+        .iter()
+        .map(|node| node.weight.node.clone())
+        .collect::<Vec<IncludeNode>>()
 }
