@@ -2,7 +2,7 @@
 
 ## 0.1.2 (2018-12-23)
 
-* Fixed sorting bug
+* Fixed sorting bug.
 * Added `get_root_node` convenience function.
 
 ## 0.1.1 (2018-12-23)
