@@ -20,6 +20,7 @@ use petgraph::prelude::*;
 use petgraph::visit::Walker;
 use ptree::graph::print_graph;
 
+/// Represents a pattern matched include directive.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Include {
     /// Canonical path to included file
@@ -35,6 +36,7 @@ pub struct Include {
     pub relative_path: bool,
 }
 
+/// Represents a particular include file.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct IncludeNode {
     /// Canonical path of working directory
@@ -43,10 +45,13 @@ pub struct IncludeNode {
     /// Canonical path of include file
     pub include_file: PathBuf,
 
-    /// Sha256+Base58 encoded content identity
+    /// Original identity of the source (no modifications)
     pub source_identity: Option<String>,
+
+    /// Modified identity of the source (flattened or Merkle replacement)
     pub patched_identity: Option<String>,
 
+    /// Resolved file contents (flattened or patched)
     pub flattened: String,
 }
 
@@ -71,6 +76,7 @@ impl fmt::Display for IncludeNodeWeight {
 }
 
 impl IncludeNode {
+    /// Create a new `IncludeNode` from a working directory and a file path.
     pub fn new(working_dir: &Path, include_file: &Path) -> Self {
         IncludeNode {
             working_dir: working_dir.into(),
@@ -81,6 +87,7 @@ impl IncludeNode {
         }
     }
 
+    /// Load the contents of the `IncludeNode` backing file and return as a utf8 encoded string.
     pub fn data_as_string(&self) -> String {
         let data = read_file(&self.include_file);
         if let Ok(ref data) = data {
@@ -91,15 +98,20 @@ impl IncludeNode {
     }
 }
 
+/// Represents the payload for a node in the graph.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct IncludeNodeWeight {
+    /// Include file associated with the graph node.
     pub node: IncludeNode,
+
+    /// Pattern matched include directives for the include file.
     pub includes: Vec<Include>,
 }
 
 pub type IncludeNodeLevel = u32;
 pub type IncludeNodeGraph = Graph<IncludeNodeWeight, IncludeNodeLevel>;
 
+/// Compute a Sha256 + Base58 encoded identity for a data slice.
 pub fn compute_identity(data: &[u8]) -> String {
     use base58::ToBase58;
     use sha2::{Digest, Sha256};
@@ -114,6 +126,7 @@ pub fn compute_identity(data: &[u8]) -> String {
     hasher.result().to_base58()
 }
 
+/// Traverse the graph in order to construct the structure and meta data.
 pub fn traverse_build(
     mut graph: &mut IncludeNodeGraph,
     working_dir: &Path,
@@ -151,6 +164,7 @@ pub fn traverse_build(
     graph_node
 }
 
+/// Traverse the graph in order to patch in Merkle identities for all include directives.
 pub fn traverse_patch(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
     // Visit nodes in a depth-first search, emitting nodes in post-order.
     // We want to evaluate data starting at the leaf nodes (no include directives).
@@ -197,6 +211,7 @@ pub fn traverse_patch(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
     });
 }
 
+/// Traverse the graph in order to flatten the text for the root node.
 pub fn traverse_flatten(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
     // Visit nodes in a depth-first search, emitting nodes in post-order.
     // We want to evaluate data starting at the leaf nodes (no include directives).
@@ -238,10 +253,12 @@ pub fn traverse_flatten(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
     });
 }
 
+/// Check if a given path exists on the file system.
 pub fn path_exists<P: AsRef<Path>>(path: P) -> bool {
     std::fs::metadata(path.as_ref()).is_ok()
 }
 
+/// Convert a path into a string
 pub fn path_to_string(path: &Path) -> Option<String> {
     let path_os_str = path.as_os_str();
     if let Some(path_str) = path_os_str.to_str() {
@@ -251,6 +268,20 @@ pub fn path_to_string(path: &Path) -> Option<String> {
     }
 }
 
+/// Strip the working directory prefix from an include file path
+pub fn path_strip_base(working_dir: &Path, include_file: &Path) -> PathBuf {
+    if let Ok(ref prefix) = working_dir.canonicalize() {
+        if let Ok(ref path) = include_file.strip_prefix(&prefix) {
+            path.to_path_buf()
+        } else {
+            include_file.to_path_buf()
+        }
+    } else {
+        include_file.to_path_buf()
+    }
+}
+
+/// Read a file in its entirety into a byte vector.
 pub fn read_file<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
     let mut file = File::open(path)?;
     let meta = file.metadata()?;
@@ -260,9 +291,12 @@ pub fn read_file<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
     Ok(data)
 }
 
+/// Parse the specified text to extract all relative and absolute include directives.
+/// See: https://www.wihlidal.com/blog/pipeline/2018-10-04-parsing-shader-includes/
 pub fn parse_includes(input: &str) -> Vec<Include> {
-    //r#"(?m)^*\#include\s+["<]([^">]+)*[">]"#
-    //r#"(?m)(^*\#\s*include\s*<([^<>]+)>)|(^\s*\#\s*include\s*"([^"]+)")"#
+    // Alternate forms:
+    // r#"(?m)^*\#include\s+["<]([^">]+)*[">]"#
+    // r#"(?m)(^*\#\s*include\s*<([^<>]+)>)|(^\s*\#\s*include\s*"([^"]+)")"#
 
     lazy_static! {
         static ref ABSOLUTE_PATH_REGEX: Regex = Regex::new(r#"(?m)^*\#\s*include\s*<([^<>]+)>"#)
@@ -315,6 +349,7 @@ pub fn parse_includes(input: &str) -> Vec<Include> {
     references
 }
 
+/// Extract resolved include directives from the specified text.
 pub fn resolve_includes(text: &str, working_dir: &Path, include_dir: &Path) -> Vec<Include> {
     let mut includes = parse_includes(&text);
     for include in &mut includes {
@@ -339,17 +374,24 @@ pub fn resolve_includes(text: &str, working_dir: &Path, include_dir: &Path) -> V
         exists
     });
 
+    // Sorted references in reverse order to make patching correct, otherwise
+    // applying an earlier patch would invalidate the start and end ranges of
+    // the later patches.
+    includes.sort_by(|a, b| b.range_start.cmp(&a.range_start));
     includes
 }
 
+/// Print the graph as a tree view to `stdout`.
 pub fn graph_to_stdout(graph: &IncludeNodeGraph, root_node: NodeIndex) -> std::io::Result<()> {
     print_graph(&graph, root_node)
 }
 
+/// Get a `dot/graphviz` representation of the graph.
 pub fn graph_to_dot(graph: &IncludeNodeGraph) -> String {
     Dot::new(&graph).to_string()
 }
 
+/// Get a flat vector of `IncludeNode` instances in no specific order.
 pub fn graph_to_node_vec(graph: &IncludeNodeGraph) -> Vec<IncludeNode> {
     graph
         .raw_nodes()

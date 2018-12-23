@@ -79,7 +79,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-include-merkle = "0.1.0"
+include-merkle = "0.1.1"
 ```
 
 and add this to your crate root:

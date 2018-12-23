@@ -1,6 +1,6 @@
 [package]
 name = "include-merkle"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Graham Wihlidal <graham@wihlidal.ca>"]
 description = "Functionality for generating a Merkle-tree of a given text file with include references, replacing includes paths with a deterministic versioned identity, and also functionality for flattening include directives into a single file. The primary motivation is compiling shaders for various graphics APIs, but the the functionality can apply to a variety of source code parsing use cases."
 homepage = "https://github.com/gwihlidal/include-merkle-rs"
