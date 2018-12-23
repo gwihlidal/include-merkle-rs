@@ -56,6 +56,14 @@ fn main() {
                 write_output(&patched_identity, &patched_data);
             });
 
+        if let Some(ref root_node) = include_merkle::get_root_node(&entry_graph) {
+            let patched_identity = match root_node.patched_identity {
+                Some(ref identity) => &identity,
+                None => "INVALID",
+            };
+            println!("Patched identity of root node: {}", patched_identity);
+        }
+
         println!("\n{}", include_merkle::graph_to_dot(&entry_graph));
         include_merkle::graph_to_stdout(&entry_graph, entry_node).unwrap();
     }

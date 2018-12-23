@@ -106,6 +106,9 @@ pub struct IncludeNodeWeight {
 
     /// Pattern matched include directives for the include file.
     pub includes: Vec<Include>,
+
+    /// Useful identifier for locating the root in raw nodes.
+    pub(crate) is_root: bool,
 }
 
 pub type IncludeNodeLevel = u32;
@@ -140,15 +143,39 @@ pub fn traverse_build(
     // Parse include text and extract all includes.
     let includes = resolve_includes(&include_text, &working_dir, &include_dir);
 
-    let outgoing_nodes = includes
-        .iter()
-        .map(|include| traverse_build(&mut graph, &working_dir, &include.include_path, level + 1))
-        .collect::<Vec<NodeIndex>>();
+    let (graph_node, outgoing_nodes) = if graph.node_count() == 0 {
+        // Borrowing rules mean we can't add the root node first and share `includes`. Lets only
+        // clone one extra time at least (not every iteration).
+        let graph_node = graph.add_node(IncludeNodeWeight {
+            node: include_node,
+            includes: includes.clone(),
+            is_root: true,
+        });
 
-    let graph_node = graph.add_node(IncludeNodeWeight {
-        node: include_node,
-        includes,
-    });
+        let outgoing_nodes = includes
+            .iter()
+            .map(|ref include| {
+                traverse_build(&mut graph, &working_dir, &include.include_path, level + 1)
+            })
+            .collect::<Vec<NodeIndex>>();
+
+        (graph_node, outgoing_nodes)
+    } else {
+        let outgoing_nodes = includes
+            .iter()
+            .map(|ref include| {
+                traverse_build(&mut graph, &working_dir, &include.include_path, level + 1)
+            })
+            .collect::<Vec<NodeIndex>>();
+
+        let graph_node = graph.add_node(IncludeNodeWeight {
+            node: include_node,
+            includes,
+            is_root: false,
+        });
+
+        (graph_node, outgoing_nodes)
+    };
 
     // Create all edges, and add them to the graph.
     outgoing_nodes.iter().for_each(|outgoing_node| {
@@ -377,7 +404,7 @@ pub fn resolve_includes(text: &str, working_dir: &Path, include_dir: &Path) -> V
     // Sorted references in reverse order to make patching correct, otherwise
     // applying an earlier patch would invalidate the start and end ranges of
     // the later patches.
-    includes.sort_by(|a, b| b.range_start.cmp(&a.range_start));
+    includes.sort_by(|a, b| a.range_start.cmp(&b.range_start));
     includes
 }
 
@@ -398,4 +425,13 @@ pub fn graph_to_node_vec(graph: &IncludeNodeGraph) -> Vec<IncludeNode> {
         .iter()
         .map(|node| node.weight.node.clone())
         .collect::<Vec<IncludeNode>>()
+}
+
+/// Get the root node payload from the graph
+pub fn get_root_node(graph: &IncludeNodeGraph) -> Option<IncludeNode> {
+    if let Some(ref node) = graph.raw_nodes().iter().find(|&node| node.weight.is_root) {
+        Some(node.weight.node.clone())
+    } else {
+        None
+    }
 }
