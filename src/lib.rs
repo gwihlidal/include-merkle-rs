@@ -6,11 +6,13 @@ extern crate base58;
 extern crate regex;
 extern crate sha2;
 
+use normalize_line_endings::normalized;
 use regex::Regex;
 use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::Read;
+use std::iter::FromIterator;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -91,7 +93,9 @@ impl IncludeNode {
     pub fn data_as_string(&self) -> String {
         let data = read_file(&self.include_file);
         if let Ok(ref data) = data {
-            String::from_utf8_lossy(data).to_string()
+            let str_unnormalized = String::from_utf8_lossy(data).to_string();
+            let str_normalized = normalized(str_unnormalized.chars());
+            String::from_iter(str_normalized)
         } else {
             String::new()
         }

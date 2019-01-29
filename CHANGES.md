@@ -1,5 +1,9 @@
 # Changes
 
+## 0.1.3 (2019-01-29)
+
+* Normalize line endings to Unix LF
+
 ## 0.1.2 (2018-12-23)
 
 * Fixed sorting bug.
