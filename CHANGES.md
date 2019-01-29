@@ -1,8 +1,13 @@
 # Changes
 
+## 0.1.4 (2019-01-29)
+
+* Make normalize line endings a parameter, to stay un-opinionated.
+* More robust source file loading to handle different character sets / encodings.
+
 ## 0.1.3 (2019-01-29)
 
-* Normalize line endings to Unix LF
+* Normalize line endings to Unix LF.
 
 ## 0.1.2 (2018-12-23)
 

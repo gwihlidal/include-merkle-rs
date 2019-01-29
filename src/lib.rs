@@ -6,7 +6,14 @@ extern crate base58;
 extern crate regex;
 extern crate sha2;
 
+use encoding::label::encoding_from_whatwg_label;
+use encoding::DecoderTrap;
 use normalize_line_endings::normalized;
+use petgraph::algo::is_cyclic_directed;
+use petgraph::dot::Dot;
+use petgraph::prelude::*;
+use petgraph::visit::Walker;
+use ptree::graph::print_graph;
 use regex::Regex;
 use std::fmt;
 use std::fs::File;
@@ -16,11 +23,26 @@ use std::iter::FromIterator;
 use std::path::Path;
 use std::path::PathBuf;
 
-use petgraph::algo::is_cyclic_directed;
-use petgraph::dot::Dot;
-use petgraph::prelude::*;
-use petgraph::visit::Walker;
-use ptree::graph::print_graph;
+pub fn decode_data_as_utf8(byte_str: &[u8], normalize_endings: bool) -> String {
+    let result = chardet::detect(&byte_str);
+    let encoding = chardet::charset2encoding(&result.0);
+    let coder = encoding_from_whatwg_label(encoding);
+    if coder.is_some() {
+        let utf8_text = coder
+            .unwrap()
+            .decode(&byte_str, DecoderTrap::Ignore)
+            .expect("Error decoding utf-8 data");
+        if normalize_endings {
+            let normalized_text = String::from_iter(normalized(utf8_text.chars()));
+            assert!(!normalized_text.contains('\r'));
+            normalized_text
+        } else {
+            utf8_text
+        }
+    } else {
+        String::new()
+    }
+}
 
 /// Represents a pattern matched include directive.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -90,12 +112,10 @@ impl IncludeNode {
     }
 
     /// Load the contents of the `IncludeNode` backing file and return as a utf8 encoded string.
-    pub fn data_as_string(&self) -> String {
+    pub fn data_as_string(&self, normalize_endings: bool) -> String {
         let data = read_file(&self.include_file);
         if let Ok(ref data) = data {
-            let str_unnormalized = String::from_utf8_lossy(data).to_string();
-            let str_normalized = normalized(str_unnormalized.chars());
-            String::from_iter(str_normalized)
+            decode_data_as_utf8(&data, normalize_endings)
         } else {
             String::new()
         }
@@ -139,10 +159,11 @@ pub fn traverse_build(
     working_dir: &Path,
     include_file: &Path,
     level: IncludeNodeLevel,
+    normalize_endings: bool,
 ) -> NodeIndex {
     let include_dir = include_file.parent().unwrap();
     let include_node = IncludeNode::new(&working_dir, &include_file);
-    let include_text = include_node.data_as_string();
+    let include_text = include_node.data_as_string(normalize_endings);
 
     // Parse include text and extract all includes.
     let includes = resolve_includes(&include_text, &working_dir, &include_dir);
@@ -159,7 +180,13 @@ pub fn traverse_build(
         let outgoing_nodes = includes
             .iter()
             .map(|ref include| {
-                traverse_build(&mut graph, &working_dir, &include.include_path, level + 1)
+                traverse_build(
+                    &mut graph,
+                    &working_dir,
+                    &include.include_path,
+                    level + 1,
+                    normalize_endings,
+                )
             })
             .collect::<Vec<NodeIndex>>();
 
@@ -168,7 +195,13 @@ pub fn traverse_build(
         let outgoing_nodes = includes
             .iter()
             .map(|ref include| {
-                traverse_build(&mut graph, &working_dir, &include.include_path, level + 1)
+                traverse_build(
+                    &mut graph,
+                    &working_dir,
+                    &include.include_path,
+                    level + 1,
+                    normalize_endings,
+                )
             })
             .collect::<Vec<NodeIndex>>();
 
@@ -196,7 +229,7 @@ pub fn traverse_build(
 }
 
 /// Traverse the graph in order to patch in Merkle identities for all include directives.
-pub fn traverse_patch(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
+pub fn traverse_patch(graph: &mut IncludeNodeGraph, root_node: NodeIndex, normalize_endings: bool) {
     // Visit nodes in a depth-first search, emitting nodes in post-order.
     // We want to evaluate data starting at the leaf nodes (no include directives).
     let dfs_nodes = DfsPostOrder::new(&*graph, root_node)
@@ -224,7 +257,7 @@ pub fn traverse_patch(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
 
         if let Some(ref mut node_weight) = graph.node_weight_mut(*node_index) {
             let mut node = &mut node_weight.node;
-            let mut include_text = node.data_as_string();
+            let mut include_text = node.data_as_string(normalize_endings);
             node.source_identity = Some(compute_identity(&include_text.as_bytes()));
             for (ref include_file, ref patched_identity) in neighbors {
                 if let Some(ref include) = node_weight
@@ -243,7 +276,11 @@ pub fn traverse_patch(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
 }
 
 /// Traverse the graph in order to flatten the text for the root node.
-pub fn traverse_flatten(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
+pub fn traverse_flatten(
+    graph: &mut IncludeNodeGraph,
+    root_node: NodeIndex,
+    normalize_endings: bool,
+) {
     // Visit nodes in a depth-first search, emitting nodes in post-order.
     // We want to evaluate data starting at the leaf nodes (no include directives).
     let dfs_nodes = DfsPostOrder::new(&*graph, root_node)
@@ -263,7 +300,7 @@ pub fn traverse_flatten(graph: &mut IncludeNodeGraph, root_node: NodeIndex) {
 
         if let Some(ref mut node_weight) = graph.node_weight_mut(*node_index) {
             let mut node = &mut node_weight.node;
-            let mut include_text = node.data_as_string();
+            let mut include_text = node.data_as_string(normalize_endings);
             node.source_identity = Some(compute_identity(&include_text.as_bytes()));
             for (ref include_file, ref flattened) in neighbors {
                 if let Some(ref include) = node_weight
