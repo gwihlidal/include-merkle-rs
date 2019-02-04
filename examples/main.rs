@@ -33,8 +33,13 @@ fn main() {
         let entry_path = entry_point.canonicalize().unwrap();
 
         let mut entry_graph = include_merkle::IncludeNodeGraph::new();
-        let entry_node =
-            include_merkle::traverse_build(&mut entry_graph, &working_dir, &entry_path, 0, normalize_endings);
+        let entry_node = include_merkle::traverse_build(
+            &mut entry_graph,
+            &working_dir,
+            &entry_path,
+            0,
+            normalize_endings,
+        );
 
         include_merkle::traverse_flatten(&mut entry_graph, entry_node, normalize_endings);
         let flattened_text = &entry_graph[entry_node].node.flattened;
@@ -47,8 +52,13 @@ fn main() {
     for entry_point in &entry_points {
         let entry_path = entry_point.canonicalize().unwrap();
         let mut entry_graph = include_merkle::IncludeNodeGraph::new();
-        let entry_node =
-            include_merkle::traverse_build(&mut entry_graph, &working_dir, &entry_path, 0, normalize_endings);
+        let entry_node = include_merkle::traverse_build(
+            &mut entry_graph,
+            &working_dir,
+            &entry_path,
+            0,
+            normalize_endings,
+        );
         include_merkle::traverse_patch(&mut entry_graph, entry_node, normalize_endings);
         include_merkle::graph_to_node_vec(&entry_graph)
             .iter()
