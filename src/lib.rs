@@ -22,6 +22,7 @@ use std::io::Read;
 use std::iter::FromIterator;
 use std::path::Path;
 use std::path::PathBuf;
+use log::trace;
 
 pub fn decode_data_as_utf8(byte_str: &[u8], normalize_endings: bool) -> String {
     let result = chardet::detect(&byte_str);
@@ -437,7 +438,7 @@ pub fn resolve_includes(text: &str, working_dir: &Path, include_dir: &Path) -> V
         let include_path = Path::new(&include.include_path);
         let exists = path_exists(&include_path);
         if !exists {
-            println!("Include path is invalid: {:?}", include_path);
+            trace!("Include path is invalid: {:?}", include_path);
         }
         exists
     });
