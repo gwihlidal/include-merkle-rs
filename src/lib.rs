@@ -8,6 +8,7 @@ extern crate sha2;
 
 use encoding::label::encoding_from_whatwg_label;
 use encoding::DecoderTrap;
+use log::trace;
 use normalize_line_endings::normalized;
 use petgraph::algo::is_cyclic_directed;
 use petgraph::dot::Dot;
@@ -22,7 +23,6 @@ use std::io::Read;
 use std::iter::FromIterator;
 use std::path::Path;
 use std::path::PathBuf;
-use log::trace;
 
 pub fn decode_data_as_utf8(byte_str: &[u8], normalize_endings: bool) -> String {
     let result = chardet::detect(&byte_str);
