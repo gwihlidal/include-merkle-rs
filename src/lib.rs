@@ -8,6 +8,7 @@ extern crate sha2;
 
 use encoding::label::encoding_from_whatwg_label;
 use encoding::DecoderTrap;
+use log::trace;
 use normalize_line_endings::normalized;
 use petgraph::algo::is_cyclic_directed;
 use petgraph::dot::Dot;
@@ -437,7 +438,7 @@ pub fn resolve_includes(text: &str, working_dir: &Path, include_dir: &Path) -> V
         let include_path = Path::new(&include.include_path);
         let exists = path_exists(&include_path);
         if !exists {
-            println!("Include path is invalid: {:?}", include_path);
+            trace!("Include path is invalid: {:?}", include_path);
         }
         exists
     });

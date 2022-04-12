@@ -30,6 +30,7 @@ sha2 = "0.8.0"
 normalize-line-endings = "0.3.0"
 chardet = "0.2"
 encoding = "0.2.33"
+log = "0.4"
 
 [profile.release]
 lto = true
